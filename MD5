@@ -1,7 +1,7 @@
-7a4841674307a02ee4cf4d7caf3dd0a8 *DESCRIPTION
+3d91679995c29aeddcc4f5a75b03858e *DESCRIPTION
 a3fb2870f2144d34a5f9a9c7a04cce23 *NAMESPACE
-ceca366a0d4395dc127be1355cda5f3c *R/abc_optim.R
+1954f4e86dfb48345558730c116cd81b *R/abc_optim.R
 2610f6a35b5b7176211483f0a59439b3 *demo/00Index
-eb8b2b8403786d31d4854499887b6847 *demo/ABCoptim.R
-88070ad04895346cbd4e7207dc43b526 *man/ABCoptim-package.Rd
-91dec8618ab267fe9119a4fd5613886f *man/abc_optim.Rd
+6dda464adcead473e8492fbb6ed04866 *demo/ABCoptim.R
+e1a9edf08ff31f0de2723d8f7279be53 *man/ABCoptim-package.Rd
+f8fe28a186a5989017daf9c0c24e481d *man/abc_optim.Rd
