@@ -6,7 +6,8 @@
 #' @param fn A function to be minimized, with first argument of the vector of
 #' parameters over which minimization is to take place. It should return a
 #' scalar result.
-#' @param ... Further arguments to be passed to 'fn'.
+#' @param ... In the case of \code{abc_*}, further arguments to be passed to 'fn',
+#' otherwise, further arguments passed to the method.
 #' @param FoodNumber Number of food sources to exploit. Notice that the param
 #' \code{NP} has been deprecated.
 #' @param lb Lower bound of the parameters to be optimized.
@@ -15,6 +16,10 @@
 #' @param maxCycle Maximum number of iterations.
 #' @param optiinteger Whether to optimize binary parameters or not.
 #' @param criter Stop criteria (numer of unchanged results) until stopping
+#' @param parscale Numeric vector of length \code{length(par)}. Scale applied
+#' to the parameters (see \code{\link[stats:optim]{optim}}).
+#' @param fnscale Numeric scalar. Scale applied function. If \code{fnscale < 0},
+#' then the problem becomes a maximization problem (see \code{\link[stats:optim]{optim}}).
 #'
 #' @details 
 #' 
@@ -28,6 +33,8 @@
 #' difference between the two implementations is speed, with \code{abc_cpp}
 #' showing between 50\% and 100\% faster performance.
 #' 
+#' Upper and Lower bounds (\code{ub}, \code{lb}) equal to infinite will be replaced
+#' by either \code{.Machine$double.xmax} or \code{-.Machine$double.xmax}.
 #' 
 #' If \code{D} (the number of parameters to be optimzed) is greater than one,
 #' then \code{lb} and \code{ub} can be either scalars (assuming that all the
@@ -58,29 +65,74 @@
 #' @keywords optimization
 #' @examples
 #' 
-#' # EXAMPLE 1: The minimum is at (pi,pi) ----------------------------------------
+#' # EXAMPLE 1: The minimum is at (pi,pi) --------------------------------------
+#' 
 #' fun <- function(x) {
 #'   -cos(x[1])*cos(x[2])*exp(-((x[1] - pi)^2 + (x[2] - pi)^2))
 #' }
 #' 
-#' ans0 <- abc_optim(rep(0,2), fun, lb=-10, ub=10, criter=50)
-#' ans0[c("par", "counts", "value")]
+#' abc_optim(rep(0,2), fun, lb=-10, ub=10, criter=50)
 #' 
-#' ans1 <- abc_cpp(rep(0,2), fun, lb=-10, ub=10, criter=50)
-#' ans1[c("par", "counts", "value")]
+#' # This should be equivalent
+#' abc_cpp(rep(0,2), fun, lb=-10, ub=10, criter=50)
 #' 
-#' # EXAMPLE 2: global minimum at about (-15.81515)
+#' # We can also turn this into a maximization problem, and get the same
+#' # results 
+#' fun <- function(x) {
+#'   # We've removed the '-' from the equation
+#'   cos(x[1])*cos(x[2])*exp(-((x[1] - pi)^2 + (x[2] - pi)^2))
+#' }
+#' 
+#' abc_cpp(rep(0,2), fun, lb=-10, ub=10, criter=50, fnscale = -1)
+#' 
+#' # EXAMPLE 2: global minimum at about (-15.81515) ----------------------------
+#' 
 #' fw <- function (x)
 #'   10*sin(0.3*x)*sin(1.3*x^2) + 0.00001*x^4 + 0.2*x+80
 #' 
 #' ans <- abc_optim(50, fw, lb=-100, ub=100, criter=100)
 #' ans[c("par", "counts", "value")]
 #' 
-#' # EXAMPLE 3: 5D sphere, global minimum at about (0,0,0,0,0)
+#' 
+#' # EXAMPLE 3: 5D sphere, global minimum at about (0,0,0,0,0) -----------------
 #' fs <- function(x) sum(x^2)
 #' 
 #' ans <- abc_optim(rep(10,5), fs, lb=-100, ub=100, criter=200)
 #' ans[c("par", "counts", "value")]
+#' 
+#' 
+#' # EXAMPLE 4: An Ordinary Linear Regression ----------------------------------
+#' 
+#' set.seed(1231)
+#' k <- 4
+#' n <- 5e2
+#' 
+#' # Data generating process
+#' w <- matrix(rnorm(k), ncol=1)     # This are the model parameters
+#' X <- matrix(rnorm(k*n), ncol = k) # This are the controls
+#' y <- X %*% w                      # This is the observed data
+#' 
+#' # Objective function
+#' fun <- function(x) {
+#'   sum((y - X%*%x)^2)
+#' }
+#' 
+#' # Running the regression
+#' ans <- abc_optim(rep(0,k), fun, lb = -10000, ub=10000)
+#' 
+#' # Here are the outcomes: Both columns should be the same
+#' cbind(ans$par, w)
+#' #             [,1]        [,2]
+#' # [1,] -0.08051177 -0.08051177
+#' # [2,]  0.69528553  0.69528553
+#' # [3,] -1.75956316 -1.75956316
+#' # [4,]  0.36156427  0.36156427
+#' 
+#' 
+#' # This is just like OLS, with no constant
+#' coef(lm(y~0+X))
+#' #         X1          X2          X3          X4 
+#' #-0.08051177  0.69528553 -1.75956316  0.36156427 
 #' 
 #' @export abc_optim
 #' @aliases abc_answer
@@ -88,23 +140,25 @@ abc_optim <- function(
   par,               # Vector de parametros a opti 
   fn,                # Funcion objetivo
   ...,               # Argumentos de la funcion (M, x0, X, etc.)
-  FoodNumber = 20,   # Fuentes de alimento 
-  lb = -1e20,        # Limite inferior de recorrido
-  ub = +1e20,        # Limite superior de recorrido
-  limit = 100,       # Limite con que se agota una fuente de alimento
-  maxCycle = 1000,   # Numero maximo de iteraciones 
-  optiinteger=FALSE, # TRUE si es que queremos optimizar en [0,1] (binario)
-  criter=50
+  FoodNumber  = 20,   # Fuentes de alimento 
+  lb          = rep(-Inf, length(par)),        # Limite inferior de recorrido
+  ub          = rep(+Inf, length(par)),        # Limite superior de recorrido
+  limit       = 100,       # Limite con que se agota una fuente de alimento
+  maxCycle    = 1000,   # Numero maximo de iteraciones 
+  optiinteger = FALSE, # TRUE si es que queremos optimizar en [0,1] (binario)
+  criter      = 50,
+  parscale    = rep(1, length(par)),
+  fnscale     = 1
 )
 {
   D <- length(par)
   
   # Checking limits
-  if (length(lb)>0) lb <- rep(lb, D)
-  if (length(ub)>0) ub <- rep(ub, D)
+  if (length(lb) == 1 && length(par) > 1) lb <- rep(lb, D)
+  if (length(ub) == 1 && length(par) > 1) ub <- rep(ub, D)
 
-  lb[is.infinite(lb)] <- -(.Machine$double.xmax*1e-10)
-  ub[is.infinite(ub)] <- +(.Machine$double.xmax*1e-10)
+  lb[is.infinite(lb)] <- -.Machine$double.xmax*1e-10
+  ub[is.infinite(ub)] <- .Machine$double.xmax*1e-10
   
   # Initial params
   Foods       <- matrix(double(FoodNumber*D), nrow=FoodNumber)
@@ -123,7 +177,7 @@ abc_optim <- function(
   r           <- integer(1)
 
   # Fun
-  fun <- function(par) fn(par, ...)
+  fun <- function(par) fn(par/parscale, ...)/fnscale
   
   # Fitness function
   CalculateFitness <- function(fun)
@@ -360,7 +414,8 @@ abc_optim <- function(
   return(
     structure(list(
       Foods   = Foods,
-      f       = fn,
+      f       = f,
+      fn      = fn,
       fitness = fitness,
       trial   = trial,
       value   = fun(GlobalParams),
@@ -376,8 +431,21 @@ abc_optim <- function(
 #' @param x An object of class \code{abc_answer}.
 #' @rdname abc_optim
 print.abc_answer <- function(x, ...) {
-  cat("An object of class -abc_answer- (Artificial Bee Colony Optim.):")
-  str(x)
+  cat("\n")
+  cat(" An object of class -abc_answer- (Artificial Bee Colony Optim.):\n")
+  cat(" par:\n",
+      paste0(
+        sprintf(
+          "  %6s: % f",
+          sprintf("x[%i]", 1:length(x$par)),
+          x$par),
+        collapse="\n"
+        ),
+      "\n", sep=""
+      )
+  cat("\n value:\n", sprintf("%9s % f", "", x$value), "\n", sep="")
+  cat("\n counts:\n", sprintf("%9s % i", "", x$counts), "\n", sep="")
+  
   invisible(x)
 }
 
@@ -451,3 +519,77 @@ print.abc_answer <- function(x, ...) {
 #   times=100
 # )
 
+
+#' @export
+#' @rdname abc_optim
+abc_cpp <- function(
+  par,
+  fn,
+  ...,
+  FoodNumber = 20,   # Fuentes de alimento 
+  lb         = rep(-Inf, length(par)),        # Limite inferior de recorrido
+  ub         = rep(+Inf, length(par)),        # Limite superior de recorrido
+  limit      = 100,       # Limite con que se agota una fuente de alimento
+  maxCycle   = 1000,   # Numero maximo de iteraciones 
+  criter     = 50,
+  parscale   = rep(1, length(par)),
+  fnscale    = 1
+) {
+  
+  # Checking limits
+  if (length(lb)>0) lb <- rep(lb, length(par))
+  if (length(ub)>0) ub <- rep(ub, length(par))
+  
+  lb[is.infinite(lb)] <- -(.Machine$double.xmax*1e-10)
+  ub[is.infinite(ub)] <- +(.Machine$double.xmax*1e-10)
+  
+  fun <- function(par) fn(par/parscale, ...)/fnscale
+  
+  ans <- abc_cpp_(par, fun, lb, ub, FoodNumber, limit, maxCycle, criter)
+  ans[["fn"]] <- fn
+  
+  structure(
+    ans[c("Foods",  "f",  "fn",  "fitness", "trial",  "value", "par",  "counts",
+  "hist")],
+  class="abc_answer"
+  )
+  
+}
+
+#' @export
+#' @details The \code{plot} method shows the trace of the objective function
+#' as the algorithm unfolds. The line is merely the result of the objective
+#' function evaluated at each point (row) of the \code{hist} matrix return by
+#' \code{abc_optim}/\code{abc_cpp}.
+#' 
+#' For now, the function will return with error if \code{...} was passed to
+#' \code{abc_optim}/\code{abc_cpp}, since those argumens are not stored with the
+#' result.
+#' 
+#' @rdname abc_optim
+#' @param y Ignored
+#' @param main Passed to \code{\link[graphics:plot.default]{plot}}.
+#' @param xlab Passed to \code{\link[graphics:plot.default]{plot}}.
+#' @param ylab Passed to \code{\link[graphics:plot.default]{plot}}.
+#' @param type Passed to \code{\link[graphics:plot.default]{plot}}.
+plot.abc_answer <- function(
+  x,
+  y = NULL,
+  main = "Trace of the Objective Function",
+  xlab = "Number of iteration",
+  ylab = "Value of the objective Function",
+  type = "l",
+  ...) {
+  
+  invisible(
+    graphics::plot(
+      with(x, apply(hist, 1, fn)),
+      type=type,
+      main = main,
+      ylab = ylab,
+      xlab = xlab,
+      ...
+      )
+    )
+  
+}

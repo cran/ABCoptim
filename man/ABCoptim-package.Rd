@@ -2,8 +2,8 @@
 % Please edit documentation in R/ABCoptim-package.R
 \docType{package}
 \name{ABCoptim-package}
-\alias{ABCoptim}
 \alias{ABCoptim-package}
+\alias{ABCoptim}
 \alias{abc}
 \title{An implementation of the Artificial Bee Colony (ABC) Algorithm}
 \description{
@@ -26,16 +26,12 @@ Please visit the project home for more information:
   }
 
 }
-\author{
-George Vega Yon \email{g.vegayon@gmail.com} [aut],
-
-Enyelbert Muñoz \email{enyeldoc2011@gmail.com} [cnt)
-}
 \references{
 D. Karaboga, \emph{An Idea based on Honey Bee Swarm for
 Numerical Optimization}, tech. report TR06,Erciyes University, Engineering
 Faculty, Computer Engineering Department, 2005
 \url{http://mf.erciyes.edu.tr/abc/pub/tr06_2005.pdf}
+
 
 Artificial Bee Colony (ABC) Algorithm (website)
 \url{http://mf.erciyes.edu.tr/abc/index.htm}
@@ -43,5 +39,9 @@ Artificial Bee Colony (ABC) Algorithm (website)
 Basic version of the algorithm implemented in \code{C} (ABC's official
 website) \url{http://mf.erciyes.edu.tr/abc/form.aspx}
 }
-\keyword{package}
+\author{
+George Vega Yon \email{g.vegayon@gmail.com} [aut],
 
+Enyelbert Muñoz \email{enyeldoc2011@gmail.com} [cnt)
+}
+\keyword{package}
